@@ -1,0 +1,19 @@
+---
+title: SPECTRA
+emoji: 🔬
+colorFrom: blue
+colorTo: red
+sdk: docker
+app_port: 8000
+pinned: false
+---
+
+# SPECTRA
+
+A multi-agent OpenEnv benchmark for production incident response under enforced partial observability.
+
+- `InfraEnv` exposes metrics only
+- `LogEnv` exposes logs only
+- `SecEnv` exposes security alerts only
+- `POMIREnv` orchestrates specialist reports and commander actions
+

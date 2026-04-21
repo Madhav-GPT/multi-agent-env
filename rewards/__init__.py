@@ -1,0 +1,2 @@
+"""Reward components for SPECTRA."""
+

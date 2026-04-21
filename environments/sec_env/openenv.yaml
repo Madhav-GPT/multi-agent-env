@@ -1,0 +1,5 @@
+title: SPECTRA SecEnv
+emoji: 🔐
+sdk: docker
+app_port: 8003
+

@@ -1,0 +1,21 @@
+"""Demo-mode log specialist."""
+
+from __future__ import annotations
+
+from environments.log_env.extractor import LogExtractor
+from environments.log_env.state import LogState
+
+from .base_specialist import BaseSpecialist
+
+
+class LogSpecialist(BaseSpecialist):
+    model_id = "Qwen/Qwen2.5-14B-Instruct"
+    prompt_file = "log_system_prompt.txt"
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._extractor = LogExtractor()
+
+    def fallback_report(self, state: LogState):
+        return self._extractor.extract(state)
+
