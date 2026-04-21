@@ -19,6 +19,7 @@ dependencies = [
     "rich>=13.0.0",
     "matplotlib>=3.9.0",
     "numpy>=2.0.0",
+    "datasets>=4.0.0",
 ]
 
 [project.optional-dependencies]

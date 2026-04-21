@@ -10,6 +10,8 @@ from .base_specialist import BaseSpecialist
 
 class InfraSpecialist(BaseSpecialist):
     model_id = "Qwen/Qwen2.5-7B-Instruct"
+    model_env_var = "INFRA_SPECIALIST_MODEL"
+    provider_env_var = "INFRA_SPECIALIST_PROVIDER"
     prompt_file = "infra_system_prompt.txt"
 
     def __init__(self) -> None:
@@ -18,4 +20,3 @@ class InfraSpecialist(BaseSpecialist):
 
     def fallback_report(self, state: InfraState):
         return self._extractor.extract(state)
-

@@ -13,8 +13,8 @@ if str(ROOT) not in sys.path:
 
 import matplotlib.pyplot as plt
 
+from eval.condition_runner import run_condition
 from eval.metrics import summarize
-from training.grpo_train import run_condition
 
 
 def main() -> None:

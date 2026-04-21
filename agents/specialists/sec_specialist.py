@@ -9,8 +9,9 @@ from .base_specialist import BaseSpecialist
 
 
 class SecSpecialist(BaseSpecialist):
-    model_id = "Qwen/Qwen2.5-72B-Instruct"
-    provider = "novita"
+    model_id = "Qwen/Qwen2.5-Coder-7B-Instruct"
+    model_env_var = "SEC_SPECIALIST_MODEL"
+    provider_env_var = "SEC_SPECIALIST_PROVIDER"
     prompt_file = "sec_system_prompt.txt"
 
     def __init__(self) -> None:
@@ -19,4 +20,3 @@ class SecSpecialist(BaseSpecialist):
 
     def fallback_report(self, state: SecState):
         return self._extractor.extract(state)
-

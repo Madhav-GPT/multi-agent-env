@@ -15,8 +15,14 @@ from openai import OpenAI
 from agents.observation_builder import build_commander_observation
 from agents.specialist_report import AgentID, SpecialistReport
 from environments.shared.state import CommanderAction, CommanderExecution, MasterSREState
+from runtime.env import load_runtime_env
 
 from .action_parser import parse_action
+
+try:
+    from huggingface_hub import InferenceClient
+except Exception:  # pragma: no cover - optional runtime dependency
+    InferenceClient = None  # type: ignore[assignment]
 
 
 @dataclass
@@ -29,12 +35,23 @@ class Commander:
     """Heuristic commander with optional OpenAI-compatible inference backend."""
 
     def __init__(self) -> None:
+        load_runtime_env()
         self._client = None
-        api_key = os.getenv("HF_TOKEN") or os.getenv("OPENAI_API_KEY")
+        self._provider = os.getenv("COMMANDER_PROVIDER", "openai")
         base_url = os.getenv("API_BASE_URL")
-        if api_key and base_url and os.getenv("COMMANDER_MODE", "heuristic") == "llm":
+        if os.getenv("COMMANDER_MODE", "heuristic") == "llm":
             try:
-                self._client = OpenAI(base_url=base_url, api_key=api_key, timeout=45.0)
+                if self._provider == "hf":
+                    token = os.getenv("HF_TOKEN")
+                    if token and InferenceClient is not None:
+                        self._client = InferenceClient(
+                            model=os.getenv("MODEL_NAME", "Qwen/Qwen2.5-7B-Instruct"),
+                            token=token,
+                            provider=os.getenv("COMMANDER_HF_PROVIDER"),
+                        )
+                elif base_url:
+                    api_key = os.getenv("OPENAI_API_KEY", "local")
+                    self._client = OpenAI(base_url=base_url, api_key=api_key, timeout=45.0)
             except Exception:
                 self._client = None
         self._system_prompt = (Path(__file__).resolve().parent / "system_prompt.txt").read_text(encoding="utf-8")
@@ -58,16 +75,28 @@ class Commander:
             try:
                 start = time.perf_counter()
                 observation = build_commander_observation(reports, state, allowed_actions=allowed_actions)
-                response = self._client.chat.completions.create(
-                    model=os.getenv("MODEL_NAME", "Qwen/Qwen2.5-3B-Instruct"),
-                    messages=[
-                        {"role": "system", "content": self._system_prompt},
-                        {"role": "user", "content": observation},
-                    ],
-                    max_tokens=220,
-                    temperature=0.2,
-                )
-                content = response.choices[0].message.content or ""
+                if self._provider == "hf":
+                    response = self._client.chat_completion(  # type: ignore[union-attr]
+                        messages=[
+                            {"role": "system", "content": self._system_prompt},
+                            {"role": "user", "content": observation},
+                        ],
+                        max_tokens=220,
+                        temperature=0.2,
+                        response_format={"type": "json_object"},
+                    )
+                    content = response.choices[0].message.content or ""
+                else:
+                    response = self._client.chat.completions.create(  # type: ignore[union-attr]
+                        model=os.getenv("MODEL_NAME", "Qwen/Qwen2.5-7B-Instruct"),
+                        messages=[
+                            {"role": "system", "content": self._system_prompt},
+                            {"role": "user", "content": observation},
+                        ],
+                        max_tokens=220,
+                        temperature=0.2,
+                    )
+                    content = response.choices[0].message.content or ""
                 action = parse_action(content)
                 action.reasoning = content
                 self._remember(action)

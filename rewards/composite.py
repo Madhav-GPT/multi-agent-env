@@ -21,6 +21,7 @@ class CompositeRewardResult:
     r3_coordination: float
     r4_efficiency: float
     r5_trust: float
+    penalty_wrong_target: float
     total: float
     episode_id: str
     difficulty: str
@@ -33,6 +34,7 @@ class CompositeRewardResult:
             "r3_coordination": self.r3_coordination,
             "r4_efficiency": self.r4_efficiency,
             "r5_trust": self.r5_trust,
+            "penalty_wrong_target": self.penalty_wrong_target,
             "total": self.total,
             "episode_id": self.episode_id,
             "difficulty": self.difficulty,
@@ -50,20 +52,30 @@ class CompositeRewardCalculator:
         prior_actions: list[CommanderAction],
         done: bool,
         first_action: CommanderAction | None,
+        observation_mode: str = "multi_agent",
     ) -> CompositeRewardResult:
-        succeeded = state.incident_resolved
         r1 = resolution_reward(state, done)
         r2 = root_cause_reward(first_action, state) if len(prior_actions) == 0 else 0.0
-        r3 = coordination_reward(action, reports, state, prior_actions, succeeded)
-        r4 = efficiency_reward(state.step_budget, state.total_step_budget, succeeded)
-        r5 = trust_calibration_reward(action, reports, state, prior_actions, succeeded)
-        total = round(r1 + r2 + r3 + r4 + r5, 3)
+        r3 = coordination_reward(action, reports, state, observation_mode=observation_mode)
+        r4 = efficiency_reward(state.step_budget, state.total_step_budget, state.incident_resolved)
+        r5 = trust_calibration_reward(
+            action,
+            reports,
+            state,
+            prior_actions=prior_actions,
+            observation_mode=observation_mode,
+        )
+        penalty = 0.0
+        if action.target_service is not None and action.target_service != state.root_cause_service:
+            penalty = -0.1
+        total = round(max(0.0, min(1.0, r1 + r2 + r3 + r4 + r5 + penalty)), 3)
         return CompositeRewardResult(
             r1_resolution=r1,
             r2_root_cause=r2,
             r3_coordination=r3,
             r4_efficiency=r4,
             r5_trust=r5,
+            penalty_wrong_target=penalty,
             total=total,
             episode_id=state.episode_id,
             difficulty=state.difficulty,

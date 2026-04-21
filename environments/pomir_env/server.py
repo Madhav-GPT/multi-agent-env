@@ -11,9 +11,11 @@ from pydantic import BaseModel, ConfigDict, Field
 from environments.shared.openenv_compat import create_app
 from environments.shared.scenarios import baseline_plan_for_scenario, list_scenarios
 from environments.shared.state import CommanderAction
+from runtime.env import load_runtime_env
 
 from .env import POMIREnv, POMIRObservation
 
+load_runtime_env()
 _RUNTIME_ENV = POMIREnv()
 
 

@@ -1,159 +1,175 @@
 # SPECTRA
 
-SPECTRA is a terminal-first OpenEnv benchmark for multi-agent incident response under enforced partial observability. It rebuilds the earlier single-agent `openenv` incident project into a proper coordination benchmark: three specialists work in parallel on disjoint state partitions, and a commander acts only on their reports.
+SPECTRA is a terminal-first OpenEnv benchmark for incident response under partial observability. The environment can now run in two honest modes:
 
-This project is intentionally not a browser dashboard. The main experience is the round-by-round terminal trace from `run_demo.py` and `inference.py`, where you can see the specialists, commander, workflow stage, and reward stack evolve together.
+- `multi_agent`: three specialists see different state partitions and the commander acts on their reports
+- `single_agent`: the commander gets the full world state for local-model freedom and baseline comparison
 
-## What This Project Does
+For the quickest hands-on walkthrough, start with [execution.md](/Users/madhav_189/Documents/Scalar_hackathon/Madhav_task/execution.md).
 
-- Keeps one hidden `MasterSREState` with metrics, logs, security telemetry, causal graph, and staged resolution state.
-- Exposes three strict sub-environments:
-  - `InfraEnv`: metrics only
-  - `LogEnv`: logs only
-  - `SecEnv`: security telemetry only
-- Runs three specialists concurrently each round and stores their raw execution artifacts.
-- Forces the commander to operate on serialized `SpecialistReport` objects, not raw state.
-- Scores each step with the five-part SPECTRA reward:
-  - `R1` resolution
-  - `R2` first-step root-cause targeting
-  - `R3` coordination
-  - `R4` efficiency
-  - `R5` specialist trust calibration
+The repo is built around three practical runs:
+
+1. `make untrained`: run a local commander model on the full environment with no help
+2. `make multi-agent`: collect step-level JSONL data plus raw episode traces and a cheat sheet from the agentic environment
+3. `make hinted` plus `training/grpo_train.py`: test the cheat sheet on the same local commander, then replay the saved data for GRPO
+
+## What Changed
+
+The current repo is no longer just a terminal showcase:
+
+- `inference.py` now writes a real step dataset instead of only a trace blob
+- `inference.py` can also export raw per-episode trace JSON with specialist raw outputs and commander outputs
+- `training/grpo_train.py` is now an environment-backed GRPO entrypoint instead of an A/B/C comparison stub
+- per-step reward is clamped to `[0.0, 1.0]`, which makes it safe to use as a training signal
+- a trace-derived hint-pack generator exports reusable JSON cheat sheets without oracle root-cause leakage
+- single-agent and multi-agent observation modes are both first-class environment settings
+- the observation contract now includes stage goals, required action fields, valid examples, and loop warnings inspired by the `openenv` reference repo
+- specialist models are configurable by env vars, and `hybrid` mode is the practical real-world fallback when strict hosted LLM mode is brittle or provider credits are exhausted
 
 ## Architecture
 
 ```text
-MasterSREEnv (hidden full state)
-  -> InfraEnv -> Infra specialist
-  -> LogEnv   -> Log specialist
-  -> SecEnv   -> Security specialist
-  -> POMIREnv orchestrator -> Commander -> DeterministicJudge -> reward stack
+MasterSREEnv (hidden state)
+  -> InfraEnv -> Infra specialist / extractor
+  -> LogEnv   -> Log specialist / extractor
+  -> SecEnv   -> Security specialist / extractor
+  -> POMIREnv orchestrator
+       -> multi_agent prompt from SpecialistReport objects
+       -> single_agent prompt from full MasterSREState
+       -> bounded reward + round history
 ```
 
-Key implementation points:
+The benchmark still keeps one hidden `MasterSREState` and strict typed partitions. The main difference is that the execution layer is now productized around dataset collection and training instead of only a pretty terminal loop.
 
-- Partitioning is enforced by Pydantic schemas, not prompt text.
-- Specialists can run in `training` mode with deterministic extractors or `demo` mode with Hugging Face-backed inference plus fallback.
-- The commander loop is stage-aware:
-  - `triage`
-  - `containment`
-  - `remediation`
-  - `recovery`
-  - `retrospective`
-  - `done`
-- All parallel round artifacts are saved in `round_history` and can be exported as raw traces.
+## Run Modes
 
-## Scenario Catalog
+### 1. Untrained Local Commander
 
-SPECTRA now ships with five benchmark incidents instead of only the old easy/medium/hard trio:
-
-| Scenario | Difficulty | Root service | Core twist |
-| --- | --- | --- | --- |
-| `database_sqli_outage` | easy | `database` | clean SQLi causal chain |
-| `api_gateway_xss` | medium | `api-gateway` | gateway recovery uses `scale_service` |
-| `broken_auth_cascade` | hard | `auth_service` | infra is misled by cache saturation |
-| `worker_supply_chain_compromise` | hard | `worker` | poisoned release destabilizes downstream systems |
-| `cache_poisoning_campaign` | medium | `cache` | logs mislead toward `api-gateway` |
-
-## Project Layout
-
-```text
-Madhav_task/
-├── agents/
-├── environments/
-├── rewards/
-├── runtime/
-├── training/
-├── eval/
-├── server/
-├── tests/
-├── inference.py
-├── run_demo.py
-└── openenv.yaml
-```
-
-Highlights:
-
-- `environments/shared/scenarios.py`: scenario catalog and deterministic state builder
-- `environments/shared/judge.py`: staged judge logic
-- `environments/pomir_env/env.py`: orchestrator and parallel specialist gathering
-- `runtime/terminal.py`: terminal tables and trace export
-- `environments/pomir_env/server.py`: OpenEnv app plus `/tasks`, `/baseline`, `/status`, `/plan`
-
-## Quick Start
-
-Two supported environment options:
-
-- Local: create `Madhav_task/.venv`
-- Shared fallback: reuse `/Users/madhav_189/Documents/Scalar_hackathon/openenv/.venv`
-
-Recommended first-time setup:
+Run a local Ollama model on the full-state environment with no hint help:
 
 ```bash
-cd /Users/madhav_189/Documents/Scalar_hackathon/Madhav_task
-make setup-venv
-make doctor
-make test
-make demo
+make untrained SCENARIO=broken_auth_cascade LOCAL_MODEL=qwen2.5:3b
 ```
 
-If you do not create a local `.venv`, the `Makefile` falls back automatically to the older shared environment at `/Users/madhav_189/Documents/Scalar_hackathon/openenv/.venv`.
+This uses:
 
-## Main Entry Points
+- `observation_mode=single_agent`
+- local OpenAI-compatible inference at `http://127.0.0.1:11434/v1`
+- no hint pack
 
-Run a local terminal demo:
+### 2. Multi-Agent Data Collection
+
+Collect multi-agent JSONL data:
 
 ```bash
-make demo SCENARIO=cache_poisoning_campaign
+make multi-agent-smoke SCENARIO=broken_auth_cascade
 ```
 
-Run a local benchmark trace:
+Or collect a larger live set:
 
 ```bash
-make inference SCENARIO=worker_supply_chain_compromise
+make multi-agent EPISODES=20 COMMANDER_MODEL=Qwen/Qwen2.5-7B-Instruct
 ```
 
-Start the OpenEnv server:
+Each JSONL row stores:
+
+- `prompt`
+- `completion`
+- `reference_action`
+- `reward`
+- `reward_breakdown`
+- `scenario_id`, `seed`, `step_index`
+- `prior_actions`
+- `observation_mode` and `specialist_mode`
+
+That is enough to replay the exact state later during training.
+
+This writes three artifacts:
+
+- step-level GRPO dataset JSONL
+- per-episode raw trace JSON
+- trace-derived hint pack
+
+Use `SPECIALIST_MODE=hybrid` for the practical live path and `SPECIALIST_MODE=llm` for strict hosted-only specialists.
+
+### 3. Hinted Local Commander
+
+Re-run the same local commander with the generated cheat sheet:
 
 ```bash
-make server
+make hinted SCENARIO=broken_auth_cascade LOCAL_MODEL=qwen2.5:3b
 ```
 
-Run against the live server:
+Measure blind vs hinted improvement:
 
 ```bash
-make remote REMOTE_SCENARIO=database_sqli_outage
+make hinted-check SCENARIO=broken_auth_cascade
 ```
 
-Smoke the comparison harness:
+### 4. GRPO Training
+
+Validate the training dataset and reward replay:
 
 ```bash
 make train-smoke
 ```
 
-## Server Routes
+Dry-run the trainer on an existing dataset:
 
-- `POST /reset`: reset the persistent runtime environment
-- `POST /step`: apply a commander action
-- `POST /plan`: ask the built-in commander for the next action
-- `GET /state`: current orchestrator state
-- `GET /tasks`: scenario catalog
-- `GET /baseline`: baseline plans
-- `GET /status`: runtime progress summary
-- `GET /health`: environment metadata and stage list
+```bash
+make grpo-dry-run DATASET_PATH=outputs/multi_agent/data.jsonl
+```
 
-## Output Artifacts
+Launch real GRPO training:
 
-- `outputs/raw_traces/`: per-episode execution traces
-- `outputs/grpo_smoke/` and `outputs/grpo_runs/`: comparison harness outputs
-- `outputs/remote_smoke/`: server-backed inference traces
+```bash
+make train DATASET_PATH=outputs/multi_agent/data.jsonl TRAIN_STEPS=20
+```
 
-## Validation Status
+`training/grpo_train.py` replays the environment to the saved step and computes reward from the candidate completion's parsed action. It does not rely on a baked-in reward number from the dataset.
+Replay uses deterministic specialists by default, even when the original dataset was collected in `hybrid` or `llm` mode.
 
-Validated locally in the rebuilt project:
+## Specialist Modes
 
-- `18` pytest checks passing
-- local `inference.py` smoke test
-- local `run_demo.py` smoke test
-- `training/grpo_train.py` smoke test
-- live server-backed remote inference smoke test
+`POMIREnv` supports:
+
+- `deterministic`: cheap extractor-backed specialists, good for reproducible training runs
+- `hybrid`: try live LLM specialists and fall back to extractors when providers fail or credits run out
+- `llm`: require live specialist calls
+
+The default repo flow keeps `deterministic` as the practical training path and leaves `llm`/`hybrid` available when you want richer behavior.
+
+## Scenarios
+
+| Scenario | Difficulty | Root service | Core twist |
+| --- | --- | --- | --- |
+| `database_sqli_outage` | easy | `database` | clean SQLi causal chain |
+| `api_gateway_xss` | medium | `api-gateway` | gateway recovery needs `scale_service` |
+| `broken_auth_cascade` | hard | `auth_service` | infra is factually right about cache pain but wrong about cause |
+| `worker_supply_chain_compromise` | hard | `worker` | poisoned worker release destabilizes downstream systems |
+| `cache_poisoning_campaign` | medium | `cache` | logs mislead toward `api-gateway` |
+
+## Useful Commands
+
+```bash
+make doctor
+make test
+make demo SCENARIO=broken_auth_cascade
+make untrained SCENARIO=broken_auth_cascade LOCAL_MODEL=qwen2.5:3b
+make multi-agent-smoke SCENARIO=broken_auth_cascade
+make hinted SCENARIO=broken_auth_cascade LOCAL_MODEL=qwen2.5:3b
+make hinted-check SCENARIO=broken_auth_cascade
+make train-smoke
+make compare
+```
+
+## Validation
+
+Validated locally after the rebuild:
+
+- `21` pytest checks passing
+- 5-episode mixed multi-agent dataset collection with exported hint pack
+- single-agent local Ollama run with the generated hint pack resolving `broken_auth_cascade`
+- GRPO reward replay dry run on the collected JSONL dataset
+- real/hybrid multi-agent collection on `broken_auth_cascade` with raw traces and trace-derived hints
+- blind vs hinted comparison showing the hinted run improved from `1.229` reward / `5` steps to `1.443` reward / `4` steps on the same setup

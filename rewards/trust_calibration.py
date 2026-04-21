@@ -10,27 +10,21 @@ def trust_calibration_reward(
     action: CommanderAction,
     reports: list[SpecialistReport],
     state: MasterSREState,
+    *,
     prior_actions: list[CommanderAction],
-    episode_succeeded: bool,
+    observation_mode: str,
 ) -> float:
-    if state.decoy_agent is None or state.decoy_service is None or not episode_succeeded:
+    if observation_mode != "multi_agent":
+        return 0.0
+    if state.decoy_agent is None or state.decoy_service is None or not state.incident_resolved:
         return 0.0
     decoy_report = next((report for report in reports if report.agent_id.value == state.decoy_agent), None)
-    episode_actions = [*prior_actions, action]
-    score = 0.0
-    if any(
-        candidate.action_type != "request_followup"
-        and candidate.target_service == state.root_cause_service
-        and candidate.target_service != state.decoy_service
-        for candidate in episode_actions
-    ):
-        score += 0.2
-    if any(
-        candidate.action_type == "request_followup"
-        and candidate.target_agent == state.best_followup_agent
-        for candidate in episode_actions
-    ):
-        score += 0.1
     if decoy_report is None:
-        return round(score, 3)
-    return round(score, 3)
+        return 0.0
+    episode_actions = [*prior_actions, action]
+    if any(
+        candidate.target_service == state.root_cause_service and candidate.target_service != state.decoy_service
+        for candidate in episode_actions
+    ):
+        return 0.05
+    return 0.0

@@ -9,7 +9,9 @@ from .base_specialist import BaseSpecialist
 
 
 class LogSpecialist(BaseSpecialist):
-    model_id = "Qwen/Qwen2.5-14B-Instruct"
+    model_id = "meta-llama/Llama-3.1-8B-Instruct"
+    model_env_var = "LOG_SPECIALIST_MODEL"
+    provider_env_var = "LOG_SPECIALIST_PROVIDER"
     prompt_file = "log_system_prompt.txt"
 
     def __init__(self) -> None:
@@ -18,4 +20,3 @@ class LogSpecialist(BaseSpecialist):
 
     def fallback_report(self, state: LogState):
         return self._extractor.extract(state)
-

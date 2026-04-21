@@ -1,19 +1,41 @@
 # SPECTRA Execution Guide
 
-This guide is for a first-time user of `/Users/madhav_189/Documents/Scalar_hackathon/Madhav_task`.
+This is the easiest way to experience the repo as a product instead of a pile of scripts.
 
-The biggest confusion was the Python environment, so this file starts there.
-
-## 1. Python Environment: Two Supported Ways
-
-There are **two valid ways** to run this project.
-
-### Option A: Use a local `.venv` inside `Madhav_task`
-
-This is the cleanest option for a first-time user.
+Project root:
 
 ```bash
 cd /Users/madhav_189/Documents/Scalar_hackathon/Madhav_task
+```
+
+## The Main Flow
+
+Think of SPECTRA in four user-visible steps:
+
+1. `make untrained`: local commander, no help
+2. `make multi-agent-smoke`: real environment run that creates traces, a cheat sheet, and GRPO data
+3. `make hinted`: same local commander, now with the generated cheat sheet
+4. `make grpo-dry-run`: verify the collected dataset is usable for GRPO replay
+
+If you only remember one sequence, use this:
+
+```bash
+make doctor
+make test
+make untrained SCENARIO=broken_auth_cascade LOCAL_MODEL=qwen2.5:3b
+make multi-agent-smoke SCENARIO=broken_auth_cascade COMMANDER_MODEL=Qwen/Qwen2.5-7B-Instruct
+make hinted SCENARIO=broken_auth_cascade LOCAL_MODEL=qwen2.5:3b
+make hinted-check SCENARIO=broken_auth_cascade
+make grpo-dry-run DATASET_PATH=outputs/multi_agent/data.jsonl
+```
+
+## 1. Python Environment
+
+There are two supported ways to run the repo.
+
+### Option A: create a local `.venv`
+
+```bash
 make setup-venv
 ```
 
@@ -23,117 +45,225 @@ This creates:
 /Users/madhav_189/Documents/Scalar_hackathon/Madhav_task/.venv
 ```
 
-After that, all `make` commands automatically use this local `.venv`.
+### Option B: reuse the older shared environment
 
-### Option B: Reuse the older shared environment from `openenv`
-
-This project also supports the environment you already created earlier:
+If there is no local `.venv`, the `Makefile` falls back to:
 
 ```text
 /Users/madhav_189/Documents/Scalar_hackathon/openenv/.venv
 ```
 
-If there is **no local `.venv`** in `Madhav_task`, the `Makefile` automatically falls back to this shared `openenv/.venv`.
-
-### How the project chooses
-
-Run:
+### Check what the repo is using
 
 ```bash
 make doctor
 ```
 
-It will tell you:
+## 2. Optional `.env`
 
-- whether it is using `local`
-- or `shared-openenv`
-- and the exact Python path
-
-## 2. What Kind Of Session Are You Running?
-
-There are **three main ways** to run SPECTRA. This is the other important distinction.
-
-| Mode | Command | What it is for |
-| --- | --- | --- |
-| Terminal demo | `make demo` | Best for seeing multi-agent behavior live |
-| Local inference | `make inference` | Best for running one episode and saving a trace |
-| Remote inference | `make remote` | Best for testing through the actual server API |
-
-### 1. `make demo`
-
-This is the best first run.
-
-It shows:
-
-- the three specialists in parallel
-- their hypotheses
-- their recommended actions
-- commander trust weights
-- reward breakdown
-- workflow stage progression
-
-### 2. `make inference`
-
-This runs one episode without needing the server.
-
-It prints `[START]`, `[ROUND]`, `[STEP]`, `[END]` logs and saves a JSON trace.
-
-### 3. `make remote`
-
-This is different from `make inference`.
-
-`make remote` talks to a live FastAPI/OpenEnv server using:
-
-- `/reset`
-- `/plan`
-- `/step`
-
-So for `make remote`, you must first start the server in another terminal.
-
-## 3. First-Time User: Best Order
-
-If this is your first time, run exactly this:
+You can create a local `.env` from the template:
 
 ```bash
-cd /Users/madhav_189/Documents/Scalar_hackathon/Madhav_task
-make setup-venv
+cp .env.example .env
+```
+
+Useful keys:
+
+- `HF_TOKEN`
+- `INFRA_SPECIALIST_MODEL`
+- `LOG_SPECIALIST_MODEL`
+- `SEC_SPECIALIST_MODEL`
+- `COMMANDER_PROVIDER`
+- `COMMANDER_MODEL`
+- `API_BASE_URL`
+- `OPENAI_API_KEY`
+
+Important:
+
+- `.env` is ignored by git
+- specialist model IDs are configurable because hosted provider availability changes
+- `SPECIALIST_MODE=hybrid` is the practical default when strict hosted LLM mode is brittle or credits are exhausted
+
+## 3. First 5 Minutes
+
+For a first-time user:
+
+```bash
 make doctor
 make test
-make demo
-make inference
-```
-
-If you do **not** want a local `.venv`, then skip `make setup-venv` and just do:
-
-```bash
-cd /Users/madhav_189/Documents/Scalar_hackathon/Madhav_task
-make doctor
-make test
-make demo
-```
-
-## 4. Most Important Commands
-
-### Check environment and scenarios
-
-```bash
-make doctor
 make scenarios
+make demo SCENARIO=broken_auth_cascade
 ```
 
-### Run tests
+That verifies:
+
+- Python environment
+- test suite
+- scenario catalog
+- terminal walkthrough behavior
+
+## 4. Run 1: Untrained Commander
+
+This is the clean baseline: one local model with full-state access and no cheat sheet.
+
+### Before you run it
+
+Make sure your local OpenAI-compatible endpoint exists.
+
+For Ollama:
 
 ```bash
-make test
+ollama serve
+ollama list
 ```
 
-### Watch a multi-agent run in the terminal
+### Run it
 
 ```bash
-make demo
+make untrained SCENARIO=broken_auth_cascade LOCAL_MODEL=qwen2.5:3b
 ```
 
-Run a specific scenario:
+Default artifact folder:
+
+- `outputs/untrained/`
+
+This answers the question:
+
+- what does the commander do when it knows nothing?
+
+## 5. Run 2: Multi-Agent Collection
+
+This is the core environment run. It creates both downstream products:
+
+- a GRPO-ready dataset
+- a cheat-sheet JSON distilled from successful traces
+
+### Smoke run
+
+```bash
+make multi-agent-smoke SCENARIO=broken_auth_cascade COMMANDER_MODEL=Qwen/Qwen2.5-7B-Instruct
+```
+
+Default artifact folder:
+
+- `outputs/multi_agent/`
+
+Files to inspect:
+
+- `outputs/multi_agent/data.jsonl`
+- `outputs/multi_agent/data.summary.json`
+- `outputs/multi_agent/traces/`
+- `outputs/multi_agent/hints.json`
+
+### Larger run
+
+```bash
+make multi-agent EPISODES=5 COMMANDER_MODEL=Qwen/Qwen2.5-7B-Instruct
+```
+
+### Strict vs practical live mode
+
+- `SPECIALIST_MODE=llm`: strict hosted specialists only
+- `SPECIALIST_MODE=hybrid`: hosted specialists first, deterministic fallback on failure
+
+Use `hybrid` when you want the pipeline to keep moving despite provider instability.
+
+Strict hosted example:
+
+```bash
+make multi-agent-smoke SCENARIO=broken_auth_cascade COMMANDER_MODEL=Qwen/Qwen2.5-7B-Instruct SPECIALIST_MODE=llm
+```
+
+### Manual version
+
+```bash
+./.venv/bin/python inference.py \
+  --episodes 5 \
+  --difficulty mixed \
+  --commander llm \
+  --commander-provider hf \
+  --commander-model Qwen/Qwen2.5-7B-Instruct \
+  --observation-mode multi_agent \
+  --specialist-mode hybrid \
+  --dataset-path outputs/my_run/data.jsonl \
+  --summary-path outputs/my_run/data.summary.json \
+  --trace-dir outputs/my_run/traces \
+  --export-hint-file outputs/my_run/hints.json
+```
+
+## 6. Run 3: Hinted Commander
+
+This re-runs the same local commander, but now it receives the cheat sheet produced by the multi-agent collection run.
+
+### Run it
+
+```bash
+make hinted SCENARIO=broken_auth_cascade LOCAL_MODEL=qwen2.5:3b
+```
+
+Default artifact folder:
+
+- `outputs/hinted/`
+
+This answers the question:
+
+- does the trace-derived cheat sheet improve the raw local commander?
+
+### Measure blind vs hinted
+
+```bash
+make hinted-check SCENARIO=broken_auth_cascade
+```
+
+Outputs:
+
+- `outputs/hint_effect/blind.jsonl`
+- `outputs/hint_effect/hinted.jsonl`
+- `outputs/hint_effect/comparison.json`
+
+### Manual version
+
+```bash
+./.venv/bin/python inference.py \
+  --scenario-id broken_auth_cascade \
+  --commander llm \
+  --commander-provider openai \
+  --commander-base-url http://127.0.0.1:11434/v1 \
+  --commander-model qwen2.5:3b \
+  --observation-mode single_agent \
+  --hint-file outputs/multi_agent/hints.json \
+  --output-dir outputs/hinted
+```
+
+## 7. Run 4: GRPO Replay
+
+This validates that the collected dataset is usable for environment-backed GRPO reward replay.
+
+### Dry run
+
+```bash
+make grpo-dry-run DATASET_PATH=outputs/multi_agent/data.jsonl
+```
+
+Replay uses deterministic specialists by default, even if the original data was collected in `hybrid` or `llm` mode.
+
+### End-to-end smoke
+
+```bash
+make train-smoke
+```
+
+### Full training entrypoint
+
+```bash
+make train DATASET_PATH=outputs/multi_agent/data.jsonl TRAIN_STEPS=20
+```
+
+Use this when you have the base checkpoint you actually want to train.
+
+## 8. Explore The Project
+
+### Try more scenarios
 
 ```bash
 make demo SCENARIO=database_sqli_outage
@@ -143,146 +273,164 @@ make demo SCENARIO=broken_auth_cascade
 make demo SCENARIO=worker_supply_chain_compromise
 ```
 
-Short aliases:
-
-```bash
-make demo-easy
-make demo-medium
-make demo-hard
-make demo-cache
-```
-
-### Save a local trace
+### Save local runs
 
 ```bash
 make inference
-```
-
-Pretty local inference:
-
-```bash
 make inference-pretty
-```
-
-Run all five scenarios:
-
-```bash
 make inference-all
 ```
 
-## 5. Server-Based Session
+### Compare broader benchmark conditions
 
-### Terminal 1: start the server
+```bash
+make compare
+make trust-probe
+```
+
+## 9. Inspect Outputs
+
+Useful folders:
+
+- `outputs/untrained/`
+- `outputs/multi_agent/`
+- `outputs/hinted/`
+- `outputs/hint_effect/`
+- `outputs/grpo_runs/`
+- `outputs/eval/`
+
+Quick inspection commands:
+
+```bash
+sed -n '1,5p' outputs/multi_agent/data.jsonl
+python -m json.tool outputs/multi_agent/data.summary.json
+python -m json.tool outputs/multi_agent/hints.json
+python -m json.tool outputs/hint_effect/comparison.json
+```
+
+## 10. Server / API Mode
+
+Use this when you want the FastAPI/OpenEnv-style server path.
+
+### Terminal 1
 
 ```bash
 make server
 ```
 
-or reload mode:
-
-```bash
-make dev
-```
-
-### Terminal 2: run through the server
+### Terminal 2
 
 ```bash
 make remote
 ```
 
-Pretty remote run:
+Pretty remote mode:
 
 ```bash
 make remote-pretty
 ```
 
-Custom server URL:
-
-```bash
-make remote BASE_URL=http://127.0.0.1:8010 REMOTE_SCENARIO=database_sqli_outage
-```
-
-## 6. Benchmark / Training Commands
-
-Quick benchmark smoke:
-
-```bash
-make train-smoke
-```
-
-Run one condition manually:
-
-```bash
-make train CONDITION=A EPISODES=10
-make train CONDITION=B EPISODES=10
-make train CONDITION=C EPISODES=10
-```
-
-Generate A/B/C comparison outputs:
-
-```bash
-make compare
-```
-
-Trust calibration probe:
-
-```bash
-make trust-probe
-```
-
-## 7. Variables You Can Override
-
-You can change behavior directly from the command line.
+## 11. Common Overrides
 
 Examples:
 
 ```bash
 make demo SCENARIO=cache_poisoning_campaign SEED=99
-make inference SCENARIO=worker_supply_chain_compromise OUTPUT_DIR=outputs/my_runs
-make remote REMOTE_SCENARIO=database_sqli_outage BASE_URL=http://127.0.0.1:8010
-make train CONDITION=C EPISODES=25
+make multi-agent EPISODES=3 COMMANDER_MODEL=Qwen/Qwen2.5-7B-Instruct
+make multi-agent-smoke SCENARIO=broken_auth_cascade SPECIALIST_MODE=llm
+make untrained SCENARIO=worker_supply_chain_compromise LOCAL_MODEL=qwen2.5:3b
+make hinted SCENARIO=worker_supply_chain_compromise LOCAL_MODEL=qwen2.5:3b
+make server PORT=8010
+make remote BASE_URL=http://127.0.0.1:8010
 ```
 
-Main variables:
+Useful variables:
 
-- `SCENARIO`: used by local `demo` and `inference`
-- `REMOTE_SCENARIO`: used by remote/server inference
-- `SEED`: episode seed
-- `PORT`: server port
-- `BASE_URL`: remote server URL
-- `OUTPUT_DIR`: local trace directory
-- `CONDITION`: benchmark condition `A`, `B`, or `C`
-- `EPISODES`: number of episodes for `make train`
+- `SCENARIO`
+- `REMOTE_SCENARIO`
+- `SEED`
+- `PORT`
+- `BASE_URL`
+- `LOCAL_MODEL`
+- `LOCAL_PROVIDER`
+- `COMMANDER_PROVIDER`
+- `COMMANDER_MODEL`
+- `COMMANDER_BASE_URL`
+- `COMMANDER_HF_PROVIDER`
+- `SPECIALIST_MODE`
+- `HINT_FILE`
+- `DATASET_PATH`
+- `SUMMARY_PATH`
+- `TRACE_DIR`
+- `EPISODES`
+- `TRAIN_STEPS`
 
-## 8. Scenario IDs
+## 12. Common Problems
 
-| Scenario ID | Difficulty | Root cause |
-| --- | --- | --- |
-| `database_sqli_outage` | easy | `database` |
-| `api_gateway_xss` | medium | `api-gateway` |
-| `cache_poisoning_campaign` | medium | `cache` |
-| `broken_auth_cascade` | hard | `auth_service` |
-| `worker_supply_chain_compromise` | hard | `worker` |
+### `argument --commander-hf-provider: expected one argument`
 
-## 9. Output Directories
+This used to happen when the CLI flag was emitted with an empty value. The runner now tolerates an empty optional provider, and the Make targets now omit the flag when it is blank.
 
-- `outputs/raw_traces/`: local inference traces
-- `outputs/remote_smoke/`: remote/server traces
-- `outputs/grpo_smoke/`: quick benchmark smoke outputs
-- `outputs/grpo_runs/`: benchmark condition outputs
-- `outputs/eval/`: charts and summaries
+### `make doctor` shows the wrong Python
 
-## 10. Cleanup
+Create a local environment:
 
 ```bash
-make clean
+make setup-venv
 ```
 
-## 11. One-Line Clarification
+### `make untrained` or `make hinted` cannot reach the model
 
-If you want the shortest explanation:
+Usually:
 
-- `make demo` = watch the agents live in one terminal
-- `make inference` = run locally and save a trace
-- `make server` + `make remote` = test the real API/server path
-- `make setup-venv` = create a local `.venv` if you do not want to rely on `openenv/.venv`
+- Ollama is not running
+- the model is not installed
+- the endpoint is not `http://127.0.0.1:11434/v1`
+
+### Hosted specialists fail randomly
+
+Use:
+
+```bash
+make multi-agent-smoke SPECIALIST_MODE=hybrid
+```
+
+This keeps the collection pipeline alive when hosted providers or credits are unstable.
+
+### `make grpo-dry-run` fails with missing dataset
+
+Create data first:
+
+```bash
+make multi-agent-smoke
+```
+
+### Hint file not found
+
+Generate it first:
+
+```bash
+make multi-agent-smoke
+```
+
+## 13. Smallest Useful Demo
+
+If you need the shortest convincing walkthrough:
+
+```bash
+make doctor
+make test
+make untrained SCENARIO=broken_auth_cascade LOCAL_MODEL=qwen2.5:3b
+make multi-agent-smoke SCENARIO=broken_auth_cascade COMMANDER_MODEL=Qwen/Qwen2.5-7B-Instruct
+make hinted SCENARIO=broken_auth_cascade LOCAL_MODEL=qwen2.5:3b
+make hinted-check SCENARIO=broken_auth_cascade
+make grpo-dry-run DATASET_PATH=outputs/multi_agent/data.jsonl
+```
+
+That sequence shows:
+
+- the repo runs
+- the raw commander baseline exists
+- the multi-agent environment creates traces, hints, and GRPO data
+- the hinted local run is a separate measurable step
+- the training replay path works
