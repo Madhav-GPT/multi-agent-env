@@ -111,7 +111,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", required=True)
     parser.add_argument("--output-dir", default="outputs/grpo_runs")
-    parser.add_argument("--model-name", default="Qwen/Qwen2.5-0.5B-Instruct")
+    parser.add_argument("--model-name", default="Qwen/Qwen3-4B-Instruct-2507")
     parser.add_argument("--max-steps", type=int, default=20)
     parser.add_argument("--learning-rate", type=float, default=1e-6)
     parser.add_argument("--num-generations", type=int, default=2)

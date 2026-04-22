@@ -9,7 +9,8 @@ from .base_specialist import BaseSpecialist
 
 
 class LogSpecialist(BaseSpecialist):
-    model_id = "meta-llama/Llama-3.1-8B-Instruct"
+    model_id = "Qwen/Qwen2.5-Coder-3B-Instruct"
+    provider = "nscale"
     model_env_var = "LOG_SPECIALIST_MODEL"
     provider_env_var = "LOG_SPECIALIST_PROVIDER"
     prompt_file = "log_system_prompt.txt"

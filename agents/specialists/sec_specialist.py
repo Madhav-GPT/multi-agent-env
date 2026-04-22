@@ -10,6 +10,7 @@ from .base_specialist import BaseSpecialist
 
 class SecSpecialist(BaseSpecialist):
     model_id = "Qwen/Qwen2.5-Coder-7B-Instruct"
+    provider = "nscale"
     model_env_var = "SEC_SPECIALIST_MODEL"
     provider_env_var = "SEC_SPECIALIST_PROVIDER"
     prompt_file = "sec_system_prompt.txt"

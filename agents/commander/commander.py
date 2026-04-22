@@ -45,9 +45,9 @@ class Commander:
                     token = os.getenv("HF_TOKEN")
                     if token and InferenceClient is not None:
                         self._client = InferenceClient(
-                            model=os.getenv("MODEL_NAME", "Qwen/Qwen2.5-7B-Instruct"),
+                            model=os.getenv("MODEL_NAME", "Qwen/Qwen3-4B-Instruct-2507"),
                             token=token,
-                            provider=os.getenv("COMMANDER_HF_PROVIDER"),
+                            provider=os.getenv("COMMANDER_HF_PROVIDER") or "nscale",
                         )
                 elif base_url:
                     api_key = os.getenv("OPENAI_API_KEY", "local")
@@ -88,7 +88,7 @@ class Commander:
                     content = response.choices[0].message.content or ""
                 else:
                     response = self._client.chat.completions.create(  # type: ignore[union-attr]
-                        model=os.getenv("MODEL_NAME", "Qwen/Qwen2.5-7B-Instruct"),
+                        model=os.getenv("MODEL_NAME", "Qwen/Qwen3-4B-Instruct-2507"),
                         messages=[
                             {"role": "system", "content": self._system_prompt},
                             {"role": "user", "content": observation},

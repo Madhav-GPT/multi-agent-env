@@ -34,6 +34,7 @@ dev = [
 ]
 
 [project.scripts]
+server = "server.app:main"
 spectra-server = "server.app:main"
 spectra-demo = "run_demo:main"
 spectra-train = "training.grpo_train:main"

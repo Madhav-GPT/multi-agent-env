@@ -269,7 +269,12 @@ class LLMCommander:
         parse_status = "ok"
         repair_retry_used = False
         try:
-            action = safe_parse_action(content, allowed_actions=allowed_actions, fail_closed=True)
+            action = safe_parse_action(
+                content,
+                allowed_actions=allowed_actions,
+                valid_action_example=valid_action_example,
+                fail_closed=True,
+            )
         except Exception:
             repair_retry_used = True
             parse_status = "repaired"
@@ -283,11 +288,20 @@ class LLMCommander:
                 user_prompt=repair_prompt,
             )
             try:
-                action = safe_parse_action(repaired, allowed_actions=allowed_actions, fail_closed=True)
+                action = safe_parse_action(
+                    repaired,
+                    allowed_actions=allowed_actions,
+                    valid_action_example=valid_action_example,
+                    fail_closed=True,
+                )
                 content = repaired
             except Exception:
                 parse_status = "fallback"
-                action = safe_parse_action(repaired, allowed_actions=allowed_actions)
+                action = safe_parse_action(
+                    repaired,
+                    allowed_actions=allowed_actions,
+                    valid_action_example=valid_action_example,
+                )
                 content = repaired
         return CommanderReply(
             action=action,
@@ -304,6 +318,7 @@ def safe_parse_action(
     text: str,
     *,
     allowed_actions: list[str] | None = None,
+    valid_action_example: dict[str, object] | None = None,
     fail_closed: bool = False,
 ) -> CommanderAction:
     try:
@@ -317,16 +332,47 @@ def safe_parse_action(
         if fail_closed:
             raise
         if allowed_actions:
-            fallback = allowed_actions[0]
-            if fallback.startswith("request_followup"):
-                return CommanderAction(action_type="request_followup", target_agent="infra")
-            if fallback.startswith("submit_resolution"):
+            allowed_names = [item.split("(", 1)[0] for item in allowed_actions]
+            candidate = text.lower()
+            service_names = ("api-gateway", "database", "cache", "worker", "auth_service")
+            agent_names = ("infra", "log", "security")
+
+            action_type = next((name for name in allowed_names if name in candidate), None)
+            if action_type is None:
+                example_action_type = valid_action_example.get("action_type") if valid_action_example else None
+                if isinstance(example_action_type, str) and example_action_type in allowed_names:
+                    action_type = example_action_type
+                else:
+                    action_type = allowed_names[0]
+
+            if action_type == "request_followup":
+                target_agent = next((name for name in agent_names if name in candidate), None)
+                if target_agent is None:
+                    example_target_agent = valid_action_example.get("target_agent") if valid_action_example else None
+                    if isinstance(example_target_agent, str) and example_target_agent in agent_names:
+                        target_agent = example_target_agent
+                    else:
+                        target_agent = "infra"
+                return CommanderAction(action_type="request_followup", target_agent=target_agent)
+
+            if action_type == "submit_resolution":
+                resolution_summary = "Commander marked the incident as resolved."
+                example_summary = valid_action_example.get("resolution_summary") if valid_action_example else None
+                if isinstance(example_summary, str) and example_summary.strip():
+                    resolution_summary = example_summary
                 return CommanderAction(
                     action_type="submit_resolution",
-                    resolution_summary="Commander marked the incident as resolved.",
+                    resolution_summary=resolution_summary,
                 )
-            service = fallback.split("(", 1)[1].split(")", 1)[0]
-            return CommanderAction(action_type=fallback.split("(", 1)[0], target_service=service)
+
+            target_service = next((name for name in service_names if name in candidate), None)
+            if target_service is None:
+                example_target_service = valid_action_example.get("target_service") if valid_action_example else None
+                if isinstance(example_target_service, str) and example_target_service in service_names:
+                    target_service = example_target_service
+                else:
+                    target_service = "api-gateway"
+            return CommanderAction(action_type=action_type, target_service=target_service)
         return CommanderAction(action_type="investigate_service", target_service="api-gateway")
 
 
@@ -449,7 +495,7 @@ def main() -> None:
     parser.add_argument("--observation-mode", default="multi_agent", choices=["multi_agent", "single_agent"])
     parser.add_argument("--specialist-mode", default="deterministic", choices=["deterministic", "hybrid", "llm"])
     parser.add_argument("--commander", default="heuristic", choices=["heuristic", "random", "llm", "single-agent"])
-    parser.add_argument("--commander-model", default=os.getenv("COMMANDER_MODEL", "Qwen/Qwen2.5-7B-Instruct"))
+    parser.add_argument("--commander-model", default=os.getenv("COMMANDER_MODEL", "Qwen/Qwen3-4B-Instruct-2507"))
     parser.add_argument("--commander-provider", default="openai", choices=["openai", "hf"])
     parser.add_argument("--commander-base-url", default="http://127.0.0.1:11434/v1")
     parser.add_argument("--commander-api-key", default=None)

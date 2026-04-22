@@ -9,7 +9,8 @@ from .base_specialist import BaseSpecialist
 
 
 class InfraSpecialist(BaseSpecialist):
-    model_id = "Qwen/Qwen2.5-7B-Instruct"
+    model_id = "Qwen/Qwen3-4B-Thinking-2507"
+    provider = "nscale"
     model_env_var = "INFRA_SPECIALIST_MODEL"
     provider_env_var = "INFRA_SPECIALIST_PROVIDER"
     prompt_file = "infra_system_prompt.txt"

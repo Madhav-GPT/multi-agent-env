@@ -1,7 +1,9 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help doctor setup-venv which-python scenarios test smoke demo demo-easy demo-medium demo-hard demo-cache \
+.PHONY: help doctor setup-venv which-python scenarios test smoke demo demo-all demo-easy demo-medium demo-hard demo-cache \
 	inference inference-pretty inference-all local-free untrained hinted build-hints dataset-smoke multi-agent-smoke multi-agent \
+	multi-agent-local-smoke multi-agent-local multi-agent-local-05b-smoke multi-agent-local-15b-smoke multi-agent-local-3b-smoke multi-agent-local-matrix \
+	council-local council-hf \
 	real-collect-smoke real-collect hinted-check hint-effect server dev remote remote-pretty train grpo-dry-run train-smoke \
 	compare trust-probe clean docker-build docker-run
 
@@ -31,14 +33,21 @@ TRUST_EPISODES  ?= 5
 TRAIN_STEPS     ?= 20
 LOCAL_MODEL     ?= qwen2.5:1.5b
 LOCAL_PROVIDER  ?= openai
-COMMANDER_MODEL ?= Qwen/Qwen2.5-7B-Instruct
+LOCAL_MULTI_MODEL ?= qwen2.5:3b
+COUNCIL_LOCAL_MODEL ?= qwen2.5:3b
+COUNCIL_OUTPUT_ROOT ?= outputs/council_pipeline
+COUNCIL_SCOPE ?= all
+COUNCIL_PHASES ?= untrained,multi_agent,hinted
+COMMANDER_MODEL ?= Qwen/Qwen3-4B-Instruct-2507
 COMMANDER_PROVIDER ?= hf
 COMMANDER_BASE_URL ?= http://127.0.0.1:11434/v1
-COMMANDER_HF_PROVIDER ?=
+COMMANDER_HF_PROVIDER ?= nscale
 SPECIALIST_MODE ?= hybrid
+LOCAL_MULTI_SPECIALIST_MODE ?= deterministic
 UNTRAINED_OUTPUT_DIR ?= outputs/untrained
 HINTED_OUTPUT_DIR ?= outputs/hinted
 MULTI_AGENT_OUTPUT_DIR ?= outputs/multi_agent
+LOCAL_MULTI_OUTPUT_DIR ?= outputs/multi_agent
 HINT_FILE       ?= $(MULTI_AGENT_OUTPUT_DIR)/hints.json
 DATASET_PATH    ?= $(MULTI_AGENT_OUTPUT_DIR)/data.jsonl
 SUMMARY_PATH    ?= $(MULTI_AGENT_OUTPUT_DIR)/data.summary.json
@@ -46,6 +55,8 @@ TRACE_DIR       ?= $(MULTI_AGENT_OUTPUT_DIR)/traces
 
 COMMANDER_HF_PROVIDER_ARG := $(if $(strip $(COMMANDER_HF_PROVIDER)),--commander-hf-provider $(COMMANDER_HF_PROVIDER),)
 HINT_FILE_ARG := $(if $(strip $(HINT_FILE)),--hint-file $(HINT_FILE),)
+COUNCIL_SCENARIO_ARG := $(if $(filter single,$(COUNCIL_SCOPE)),--scenario-id $(SCENARIO),)
+COUNCIL_MULTI_AGENT_HF_PROVIDER_ARG := $(if $(strip $(COMMANDER_HF_PROVIDER)),--multi-agent-hf-provider $(COMMANDER_HF_PROVIDER),)
 
 doctor:
 	@echo "Project: /Users/madhav_189/Documents/Scalar_hackathon/Madhav_task"
@@ -74,7 +85,10 @@ smoke: test
 	$(PYTHON) inference.py --scenario-id $(SCENARIO) --seed $(SEED) --output-dir $(OUTPUT_DIR)
 
 demo:
-	$(PYTHON) run_demo.py --scenario-id $(SCENARIO) --seed $(SEED)
+	$(PYTHON) demo.py --scenario-scope single --scenario-id $(SCENARIO) --seed $(SEED) --runtime local --commander-base-url $(COMMANDER_BASE_URL) --untrained-model $(COUNCIL_LOCAL_MODEL) --hinted-model $(COUNCIL_LOCAL_MODEL) --multi-agent-provider openai --multi-agent-model $(LOCAL_MULTI_MODEL) --specialist-mode $(LOCAL_MULTI_SPECIALIST_MODE) --output-root $(COUNCIL_OUTPUT_ROOT)/single_$(SCENARIO)
+
+demo-all:
+	$(MAKE) council-local
 
 demo-easy:
 	$(MAKE) demo SCENARIO=database_sqli_outage
@@ -120,6 +134,32 @@ multi-agent-smoke:
 
 multi-agent:
 	$(PYTHON) inference.py --episodes $(EPISODES) --difficulty mixed --commander llm --commander-provider $(COMMANDER_PROVIDER) --commander-model $(COMMANDER_MODEL) --commander-base-url $(COMMANDER_BASE_URL) $(COMMANDER_HF_PROVIDER_ARG) --observation-mode multi_agent --specialist-mode $(SPECIALIST_MODE) --dataset-path $(DATASET_PATH) --summary-path $(SUMMARY_PATH) --trace-dir $(TRACE_DIR) --export-hint-file $(HINT_FILE) --output-dir $(MULTI_AGENT_OUTPUT_DIR)
+
+multi-agent-local-smoke:
+	$(PYTHON) inference.py --episodes 1 --scenario-id $(SCENARIO) --commander llm --commander-provider openai --commander-model $(LOCAL_MULTI_MODEL) --commander-base-url $(COMMANDER_BASE_URL) --observation-mode multi_agent --specialist-mode $(LOCAL_MULTI_SPECIALIST_MODE) --dataset-path $(LOCAL_MULTI_OUTPUT_DIR)/data.jsonl --summary-path $(LOCAL_MULTI_OUTPUT_DIR)/data.summary.json --trace-dir $(LOCAL_MULTI_OUTPUT_DIR)/traces --export-hint-file $(LOCAL_MULTI_OUTPUT_DIR)/hints.json --output-dir $(LOCAL_MULTI_OUTPUT_DIR)
+
+multi-agent-local:
+	$(PYTHON) inference.py --episodes $(EPISODES) --difficulty mixed --commander llm --commander-provider openai --commander-model $(LOCAL_MULTI_MODEL) --commander-base-url $(COMMANDER_BASE_URL) --observation-mode multi_agent --specialist-mode $(LOCAL_MULTI_SPECIALIST_MODE) --dataset-path $(LOCAL_MULTI_OUTPUT_DIR)/data.jsonl --summary-path $(LOCAL_MULTI_OUTPUT_DIR)/data.summary.json --trace-dir $(LOCAL_MULTI_OUTPUT_DIR)/traces --export-hint-file $(LOCAL_MULTI_OUTPUT_DIR)/hints.json --output-dir $(LOCAL_MULTI_OUTPUT_DIR)
+
+multi-agent-local-05b-smoke:
+	$(MAKE) multi-agent-local-smoke LOCAL_MULTI_MODEL=qwen2.5:0.5b LOCAL_MULTI_OUTPUT_DIR=outputs/multi_agent_local/qwen2.5-0.5b
+
+multi-agent-local-15b-smoke:
+	$(MAKE) multi-agent-local-smoke LOCAL_MULTI_MODEL=qwen2.5:1.5b LOCAL_MULTI_OUTPUT_DIR=outputs/multi_agent_local/qwen2.5-1.5b
+
+multi-agent-local-3b-smoke:
+	$(MAKE) multi-agent-local-smoke LOCAL_MULTI_MODEL=qwen2.5:3b LOCAL_MULTI_OUTPUT_DIR=outputs/multi_agent_local/qwen2.5-3b
+
+multi-agent-local-matrix:
+	$(MAKE) multi-agent-local-05b-smoke SCENARIO=$(SCENARIO)
+	$(MAKE) multi-agent-local-15b-smoke SCENARIO=$(SCENARIO)
+	$(MAKE) multi-agent-local-3b-smoke SCENARIO=$(SCENARIO)
+
+council-local:
+	$(PYTHON) demo.py --scenario-scope $(COUNCIL_SCOPE) $(COUNCIL_SCENARIO_ARG) --seed $(SEED) --runtime local --commander-base-url $(COMMANDER_BASE_URL) --untrained-model $(COUNCIL_LOCAL_MODEL) --hinted-model $(COUNCIL_LOCAL_MODEL) --multi-agent-provider openai --multi-agent-model $(LOCAL_MULTI_MODEL) --specialist-mode $(LOCAL_MULTI_SPECIALIST_MODE) --output-root $(COUNCIL_OUTPUT_ROOT) --phases $(COUNCIL_PHASES)
+
+council-hf:
+	$(PYTHON) demo.py --scenario-scope $(COUNCIL_SCOPE) $(COUNCIL_SCENARIO_ARG) --seed $(SEED) --runtime local --commander-base-url $(COMMANDER_BASE_URL) --untrained-model $(COUNCIL_LOCAL_MODEL) --hinted-model $(COUNCIL_LOCAL_MODEL) --multi-agent-provider $(COMMANDER_PROVIDER) --multi-agent-model $(COMMANDER_MODEL) $(COUNCIL_MULTI_AGENT_HF_PROVIDER_ARG) --specialist-mode $(SPECIALIST_MODE) --output-root $(COUNCIL_OUTPUT_ROOT)_hf --phases $(COUNCIL_PHASES)
 
 hint-effect:
 	$(MAKE) hinted-check
@@ -193,7 +233,10 @@ help:
 	@echo "      Run the pytest suite."
 	@echo ""
 	@echo "  make demo SCENARIO=broken_auth_cascade"
-	@echo "      Run the terminal demo for one scenario."
+	@echo "      Run the 3-stage money demo UI for one scenario."
+	@echo ""
+	@echo "  make demo-all"
+	@echo "      Run the full all-scenarios 3-stage council pipeline."
 	@echo ""
 	@echo "  make inference SCENARIO=worker_supply_chain_compromise"
 	@echo "      Collect a dataset-backed run and save JSONL + summary."
@@ -203,6 +246,24 @@ help:
 	@echo ""
 	@echo "  make multi-agent-smoke SCENARIO=broken_auth_cascade"
 	@echo "      Run one multi-agent collection episode and save traces + GRPO data + hints."
+	@echo ""
+	@echo "  make multi-agent-local-smoke SCENARIO=broken_auth_cascade"
+	@echo "      Run the same multi-agent pipeline with a local Ollama commander and deterministic specialists."
+	@echo ""
+	@echo "  make multi-agent-local-05b-smoke | make multi-agent-local-15b-smoke | make multi-agent-local-3b-smoke"
+	@echo "      Smoke-test the three local Qwen2.5 commander sizes independently."
+	@echo ""
+	@echo "  make multi-agent-local-matrix SCENARIO=broken_auth_cascade"
+	@echo "      Run all three local commander smoke tests in sequence."
+	@echo ""
+	@echo "  make council-local"
+	@echo "      Run the council UI across all scenarios: untrained -> multi-agent -> hinted."
+	@echo ""
+	@echo "  make council-local COUNCIL_PHASES=multi_agent"
+	@echo "      Run only the all-scenarios multi-agent phase in the council UI."
+	@echo ""
+	@echo "  make council-hf"
+	@echo "      Same council pipeline, but use the hosted commander during the multi-agent phase."
 	@echo ""
 	@echo "  make hinted SCENARIO=broken_auth_cascade LOCAL_MODEL=qwen2.5:3b"
 	@echo "      Re-run the local commander with the generated cheat sheet."
@@ -216,13 +277,13 @@ help:
 	@echo "  make build-hints EPISODES=5"
 	@echo "      Build a reusable hint pack from successful multi-agent heuristic runs."
 	@echo ""
-	@echo "  make real-collect-smoke COMMANDER_MODEL=Qwen/Qwen2.5-7B-Instruct"
+	@echo "  make real-collect-smoke COMMANDER_MODEL=Qwen/Qwen3-4B-Instruct-2507"
 	@echo "      Alias for strict hosted multi-agent smoke collection."
 	@echo ""
-	@echo "  make multi-agent EPISODES=5 COMMANDER_MODEL=Qwen/Qwen2.5-7B-Instruct"
+	@echo "  make multi-agent EPISODES=5 COMMANDER_MODEL=Qwen/Qwen3-4B-Instruct-2507"
 	@echo "      Main collection path. Default specialist mode is hybrid."
 	@echo ""
-	@echo "  make real-collect EPISODES=5 COMMANDER_MODEL=Qwen/Qwen2.5-7B-Instruct"
+	@echo "  make real-collect EPISODES=5 COMMANDER_MODEL=Qwen/Qwen3-4B-Instruct-2507"
 	@echo "      Alias for strict hosted multi-agent collection."
 	@echo ""
 	@echo "  make dataset-smoke"
@@ -245,10 +306,16 @@ help:
 	@echo "  PORT=<n>              Server port"
 	@echo "  BASE_URL=<url>        Remote server URL"
 	@echo "  LOCAL_PROVIDER=openai Local OpenAI-compatible provider for untrained/hinted"
+	@echo "  LOCAL_MULTI_MODEL=<id> Local Ollama commander model for multi-agent local runs"
+	@echo "  COUNCIL_LOCAL_MODEL=<id> Local model for untrained/hinted phases in council UI"
+	@echo "  COUNCIL_OUTPUT_ROOT=<dir> Artifact root for council pipeline runs"
+	@echo "  COUNCIL_SCOPE=all|single"
+	@echo "  COUNCIL_PHASES=untrained,multi_agent,hinted"
 	@echo "  COMMANDER_PROVIDER=hf|openai"
 	@echo "  COMMANDER_MODEL=<id>  LLM commander model for real collection"
 	@echo "  COMMANDER_BASE_URL=<url> OpenAI-compatible endpoint for local commander runs"
 	@echo "  SPECIALIST_MODE=hybrid|llm|deterministic"
+	@echo "  LOCAL_MULTI_SPECIALIST_MODE=deterministic|hybrid|llm"
 	@echo "  CONDITION=A|B|C       Training condition for make train"
 	@echo "  EPISODES=<n>          Episode count for make train"
 	@echo ""
@@ -264,6 +331,10 @@ help:
 	@echo "  make smoke"
 	@echo "  make untrained"
 	@echo "  make multi-agent-smoke"
+	@echo "  make multi-agent-local-smoke"
+	@echo "  make multi-agent-local-matrix"
+	@echo "  make council-local"
+	@echo "  make council-hf"
 	@echo "  make hinted"
 	@echo "  make hinted-check"
 	@echo "  make real-collect-smoke"
